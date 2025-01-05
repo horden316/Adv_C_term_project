@@ -18,7 +18,7 @@ int main() {
         scanf("%d", &size);
         getchar();
         printf("partition size = %d\n", size);
-        init_filesystem(&fs, size);
+        init_filesystem(&fs, size, 0);//第一個分區從0開始
         printf("Make new partition successful!\n");
         help();
     }

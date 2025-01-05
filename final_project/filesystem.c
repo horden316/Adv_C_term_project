@@ -1,11 +1,22 @@
 #include "filesystem.h"
 
-void init_filesystem(FileSystem *fs, int size) {
+// 共享存儲區域
+char storage[BLOCK_SIZE * 1000]; // 假設最大存儲區域大小
+
+void init_filesystem(FileSystem *fs, int size, int storage_start_block) {
+    if (size > sizeof(storage) - storage_start_block * BLOCK_SIZE) {
+        printf("Error: Partition size exceeds storage capacity.\n");
+        return;
+    }
+
     fs->partition_size = size;
     fs->total_blocks = size / BLOCK_SIZE;
     fs->free_blocks = fs->total_blocks;
-    memset(fs->files, 0, sizeof(fs->files));
-    memset(fs->storage, 0, sizeof(fs->storage));
+    fs->storage_start_block = storage_start_block;
+    fs->file_count = 0;
+    fs->files = NULL;
+    memset(storage + storage_start_block * BLOCK_SIZE, 0, size); // 清空分區指定區域的記憶體初始化為零(記憶體起始位置, 初始化值, 初始化大小)
+    strcpy(fs->current_path, "/"); // 設定根目錄
 }
 
 void load_filesystem(FileSystem *fs, const char *filename) {
@@ -18,11 +29,18 @@ void load_filesystem(FileSystem *fs, const char *filename) {
     FILE *file = fopen(filename, "rb");
     if (file) {
         fread(fs, sizeof(FileSystem), 1, file);
+        fs->files = (File *)malloc(fs->file_count * sizeof(File));
+        if (fs->files == NULL) {
+            printf("Error: Could not allocate memory for files.\n");
+            exit(1);
+        }
+        fread(fs->files, sizeof(File), fs->file_count, file);
+        fread(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
         fclose(file);
         printf("Filesystem loaded from '%s'.\n", filename);
     } else {
         printf("Error: Could not load filesystem. Creating new filesystem.\n");
-        init_filesystem(fs, BLOCK_SIZE * MAX_FILES);
+        init_filesystem(fs, BLOCK_SIZE * 100, 0);
     }
 }
 
@@ -36,6 +54,8 @@ void save_filesystem(FileSystem *fs, const char *filename) {
     FILE *file = fopen(filename, "wb");
     if (file) {
         fwrite(fs, sizeof(FileSystem), 1, file);
+        fwrite(fs->files, sizeof(File), fs->file_count, file);
+        fwrite(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
         fclose(file);
         printf("Filesystem saved to '%s'.\n", filename);
     } else {
@@ -43,11 +63,12 @@ void save_filesystem(FileSystem *fs, const char *filename) {
     }
 }
 
-
 void ls(FileSystem *fs) {
     printf("Files:\n");
-    for (int i = 0; i < MAX_FILES; i++) {
-        if (fs->files[i].used_blocks > 0) {
+    for (int i = 0; i < fs->file_count; i++) {
+        // 只顯示當前目錄下的檔案和目錄
+        if (fs->files[i].used_blocks > 0 && 
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
             if (fs->files[i].is_directory) {
                 printf("[DIR] %s\n", fs->files[i].name);
             } else {
@@ -59,28 +80,42 @@ void ls(FileSystem *fs) {
 
 
 void mkdir(FileSystem *fs, const char *dirname) {
-    for (int i = 0; i < MAX_FILES; i++) {
-        if (fs->files[i].used_blocks > 0 && strcmp(fs->files[i].name, dirname) == 0) {
+    // 檢查目錄是否已存在
+    for (int i = 0; i < fs->file_count; i++) {
+        if (fs->files[i].used_blocks > 0 && strcmp(fs->files[i].name, dirname) == 0 && strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
             printf("Error: Directory '%s' already exists.\n", dirname);
             return;
         }
     }
 
-    for (int i = 0; i < MAX_FILES; i++) {
-        if (fs->files[i].used_blocks == 0) {
-            strncpy(fs->files[i].name, dirname, MAX_FILENAME);
-            fs->files[i].size = 0;
-            fs->files[i].used_blocks = 1; // 目錄至少占用一個 inode
-            fs->files[i].is_directory = 1; // 標記為目錄
-            printf("Directory '%s' created.\n", dirname);
-            return;
-        }
+    // 檢查是否有足夠的空間來創建新目錄
+    if (fs->free_blocks < 1) {
+        printf("Error: Not enough space to create directory '%s'.\n", dirname);
+        return;
     }
 
-    printf("Error: No space left to create directory.\n");
+    // 動態分配新的文件結構
+    fs->files = (File *)realloc(fs->files, (fs->file_count + 1) * sizeof(File));
+    if (fs->files == NULL) {
+        printf("Error: Could not allocate memory for new directory.\n");
+        return;
+    }
+
+    // 初始化新目錄
+    File *new_dir = &fs->files[fs->file_count];
+    strncpy(new_dir->name, dirname, MAX_FILENAME);
+    new_dir->size = 0;
+    new_dir->used_blocks = 1; // 目錄至少佔用一個區塊
+    new_dir->is_directory = 1; // 標記為目錄
+    strncpy(new_dir->parent_name, fs->current_path, MAX_FILENAME); // 設定父目錄名稱
+    fs->file_count++;
+    fs->free_blocks--;
+
+    printf("Directory '%s' created.\n", dirname);
 }
+
 void rmdir(FileSystem *fs, const char *dirname) {
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (int i = 0; i < fs->file_count; i++) {
         if (fs->files[i].used_blocks > 0 && strcmp(fs->files[i].name, dirname) == 0) {
             if (!fs->files[i].is_directory) {
                 printf("Error: '%s' is not a directory.\n", dirname);
@@ -88,7 +123,7 @@ void rmdir(FileSystem *fs, const char *dirname) {
             }
 
             // 確認目錄是否為空
-            for (int j = 0; j < MAX_FILES; j++) {
+            for (int j = 0; j < fs->file_count; j++) {
                 if (fs->files[j].used_blocks > 0 && strstr(fs->files[j].name, dirname) == fs->files[j].name) {
                     printf("Error: Directory '%s' is not empty.\n", dirname);
                     return;
@@ -99,12 +134,20 @@ void rmdir(FileSystem *fs, const char *dirname) {
             fs->files[i].used_blocks = 0;
             memset(&fs->files[i], 0, sizeof(File));
             printf("Directory '%s' removed.\n", dirname);
+
+            // 重新分配記憶體以釋放已刪除目錄佔用的空間
+            for (int k = i; k < fs->file_count - 1; k++) {
+                fs->files[k] = fs->files[k + 1];
+            }
+            fs->file_count--;
+            fs->files = (File *)realloc(fs->files, fs->file_count * sizeof(File));
             return;
         }
     }
 
     printf("Error: Directory '%s' not found.\n", dirname);
 }
+
 
 void cd(FileSystem *fs, const char *path) {
     if (strcmp(path, "..") == 0) {
@@ -117,7 +160,7 @@ void cd(FileSystem *fs, const char *path) {
         }
     } else {
         // 檢查目錄是否存在
-        for (int i = 0; i < MAX_FILES; i++) {
+        for (int i = 0; i < fs->file_count; i++) {
             if (fs->files[i].used_blocks > 0 && 
                 fs->files[i].is_directory && 
                 strcmp(fs->files[i].name, path) == 0) {
@@ -147,28 +190,38 @@ void put(FileSystem *fs, const char *filename) {
     int filesize = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    for (int i = 0; i < MAX_FILES; i++) {
-        if (fs->files[i].used_blocks == 0) {
-            strncpy(fs->files[i].name, filename, MAX_FILENAME);
-            fs->files[i].size = filesize;
-            fs->files[i].used_blocks = (filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
-
-            fread(fs->storage + (i * BLOCK_SIZE), filesize, 1, file);
-            fs->free_blocks -= fs->files[i].used_blocks;
-            fclose(file);
-            printf("File '%s' added to filesystem.\n", filename);
-            return;
-        }
+    int required_blocks = (filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    if (required_blocks > fs->free_blocks) {
+        printf("Error: Not enough space to store file '%s'.\n", filename);
+        fclose(file);
+        return;
     }
+
+    fs->files = (File *)realloc(fs->files, (fs->file_count + 1) * sizeof(File));
+    if (fs->files == NULL) {
+        printf("Error: Could not allocate memory for new file.\n");
+        fclose(file);
+        return;
+    }
+
+    File *new_file = &fs->files[fs->file_count];
+    strncpy(new_file->name, filename, MAX_FILENAME);
+    new_file->size = filesize;
+    new_file->used_blocks = required_blocks;
+    new_file->start_block = fs->storage_start_block + fs->file_count * BLOCK_SIZE;
+
+    fread(storage + new_file->start_block, filesize, 1, file);
+    fs->free_blocks -= required_blocks;
+    fs->file_count++;
     fclose(file);
-    printf("Error: No space available to store file.\n");
+    printf("File '%s' added to filesystem.\n", filename);
 }
 
 void get(FileSystem *fs, const char *filename) {
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (int i = 0; i < fs->file_count; i++) {
         if (strcmp(fs->files[i].name, filename) == 0) {
             FILE *file = fopen(filename, "w");
-            fwrite(fs->storage + (i * BLOCK_SIZE), fs->files[i].size, 1, file);
+            fwrite(storage + (i * BLOCK_SIZE), fs->files[i].size, 1, file);
             fclose(file);
             printf("File '%s' retrieved from filesystem.\n", filename);
             return;
@@ -178,7 +231,7 @@ void get(FileSystem *fs, const char *filename) {
 }
 
 void rm(FileSystem *fs, const char *filename) {
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (int i = 0; i < fs->file_count; i++) {
         if (strcmp(fs->files[i].name, filename) == 0) {
             fs->free_blocks += fs->files[i].used_blocks;
             memset(&fs->files[i], 0, sizeof(File));
@@ -190,9 +243,9 @@ void rm(FileSystem *fs, const char *filename) {
 }
 
 void cat(FileSystem *fs, const char *filename) {
-    for (int i = 0; i < MAX_FILES; i++) {
+    for (int i = 0; i < fs->file_count; i++) {
         if (strcmp(fs->files[i].name, filename) == 0) {
-            printf("Contents of file '%s':\n%s\n", filename, fs->storage + (i * BLOCK_SIZE));
+            printf("Contents of file '%s':\n%s\n", filename, storage + (i * BLOCK_SIZE));
             return;
         }
     }
@@ -201,16 +254,16 @@ void cat(FileSystem *fs, const char *filename) {
 
 void status(FileSystem *fs) {
     int used_inodes = 0, used_blocks = 0, file_blocks = 0;
-    for (int i = 0; i < MAX_FILES; i++) {
-        if (fs->files[i].used_blocks > 0) {
-            used_inodes++;
-            used_blocks += fs->files[i].used_blocks;
-            file_blocks += (fs->files[i].size + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        }
-    }
+    // for (int i = 0; i < fs->file_count i++) {
+    //     if (fs->files[i].used_blocks > 0) {
+    //         used_inodes++;
+    //         used_blocks += fs->files[i].used_blocks;
+    //         file_blocks += (fs->files[i].size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    //     }
+    // }
 
     printf("partition size: %d\n", fs->partition_size);
-    printf("total inodes: %d\n", MAX_FILES);
+    //printf("total inodes: %d\n", );
     printf("used inodes: %d\n", used_inodes);
     printf("total blocks: %d\n", fs->total_blocks);
     printf("used blocks: %d\n", used_blocks);

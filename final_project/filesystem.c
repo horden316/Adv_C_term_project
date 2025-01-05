@@ -165,12 +165,22 @@ void cd(FileSystem *fs, const char *path) {
                 fs->files[i].is_directory && 
                 strcmp(fs->files[i].name, path) == 0) {
 
-                // 切換到指定目錄
+                char temp_path[MAX_FILENAME];
+                size_t path_len;
+                
+                // 根目錄特殊處理
                 if (strcmp(fs->current_path, "/") == 0) {
-                    snprintf(fs->current_path, MAX_FILENAME, "/%s", path);
+                    path_len = snprintf(temp_path, MAX_FILENAME, "/%s", path);
                 } else {
-                    snprintf(fs->current_path, MAX_FILENAME, "%s/%s", fs->current_path, path);
+                    path_len = snprintf(temp_path, MAX_FILENAME, "%s/%s", fs->current_path, path);
                 }
+
+                if (path_len >= MAX_FILENAME) {
+                    printf("error：Exceed path lenth limitation\n");
+                    return;
+                }
+
+                strcpy(fs->current_path, temp_path);
                 printf("Current directory: %s\n", fs->current_path);
                 return;
             }

@@ -150,20 +150,20 @@ void rmdir(FileSystem *fs, const char *dirname) {
 
 
 void cd(FileSystem *fs, const char *path) {
-    if (strcmp(path, "..") == 0) {
+    if (strcmp(path, "..") == 0) { //
         // 返回上一層目錄
-        char *last_slash = strrchr(fs->current_path, '/');
-        if (last_slash && last_slash != fs->current_path) {
-            *last_slash = '\0';
+        char *last_slash = strrchr(fs->current_path, '/'); // 找到最後一個斜線
+        if (last_slash && last_slash != fs->current_path) { // 如果不是根目錄
+            *last_slash = '\0'; // 移除最後一個斜線 '\0'代表結束
         } else {
             strcpy(fs->current_path, "/");
         }
     } else {
         // 檢查目錄是否存在
         for (int i = 0; i < fs->file_count; i++) {
-            if (fs->files[i].used_blocks > 0 && 
-                fs->files[i].is_directory && 
-                strcmp(fs->files[i].name, path) == 0) {
+            if (fs->files[i].used_blocks > 0 && // 第i個檔案是否存在
+                fs->files[i].is_directory && // 是否為目錄
+                strcmp(fs->files[i].name, path) == 0) { // 是否為指定目錄
 
                 char temp_path[MAX_FILENAME];
                 size_t path_len;
@@ -175,7 +175,7 @@ void cd(FileSystem *fs, const char *path) {
                     path_len = snprintf(temp_path, MAX_FILENAME, "%s/%s", fs->current_path, path);
                 }
 
-                if (path_len >= MAX_FILENAME) {
+                if (path_len >= MAX_FILENAME) { // 檢查超過路徑長度限制
                     printf("error：Exceed path lenth limitation\n");
                     return;
                 }

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #define MAX_FILENAME 255
+#define MAX_PATH 1023
 #define BLOCK_SIZE 1024
 #define FS_IMG "filesystem.img"
 
@@ -21,7 +22,7 @@ typedef struct File {
 
 // 定義 FileSystem 結構
 typedef struct {
-    char current_path[MAX_FILENAME]; // 目前目錄路徑
+    char current_path[MAX_PATH]; // 目前目錄路徑
     int partition_size;              // 分區大小
     int total_blocks;                // 總區塊數
     int free_blocks;                 // 剩餘區塊數

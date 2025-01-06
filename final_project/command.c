@@ -52,37 +52,40 @@ void mkdir(FileSystem *fs, const char *dirname) {
 }
 
 void rmdir(FileSystem *fs, const char *dirname) {
+    // 檢查目錄是否存在
     for (int i = 0; i < fs->file_count; i++) {
-        if (fs->files[i].used_blocks > 0 && strcmp(fs->files[i].name, dirname) == 0) {
-            if (!fs->files[i].is_directory) {
-                printf("Error: '%s' is not a directory.\n", dirname);
-                return;
+        if (fs->files[i].used_blocks > 0 && 
+            fs->files[i].is_directory && 
+            strcmp(fs->files[i].name, dirname) == 0 && // 檢查是否為目標目錄
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0) { // 檢查是否在當前目錄下
+            
+            // 組合完整路徑
+            char full_path[MAX_PATH];
+            if (strcmp(fs->current_path, "/") == 0) {
+                snprintf(full_path, MAX_PATH, "/%s", dirname);
+            } else {
+                snprintf(full_path, MAX_PATH, "%s/%s", fs->current_path, dirname);
             }
 
-            // 確認目錄是否為空
+            // 檢查此目錄有沒有children
             for (int j = 0; j < fs->file_count; j++) {
-                if (fs->files[j].used_blocks > 0 && strstr(fs->files[j].name, dirname) == fs->files[j].name) {
-                    printf("Error: Directory '%s' is not empty.\n", dirname);
-                    return;
+                if (fs->files[j].used_blocks > 0) {
+                    if (strcmp(full_path, fs->files[j].parent_name) == 0) {
+                        printf("Error: Directory '%s' is not empty.\n", dirname);
+                        return;
+                    }
                 }
             }
 
-            // 刪除目錄
+            // 移除目錄
             fs->files[i].used_blocks = 0;
-            memset(&fs->files[i], 0, sizeof(File));
+            fs->free_blocks++;
             printf("Directory '%s' removed.\n", dirname);
-
-            // 重新分配記憶體以釋放已刪除目錄佔用的空間
-            for (int k = i; k < fs->file_count - 1; k++) {
-                fs->files[k] = fs->files[k + 1];
-            }
-            fs->file_count--;
-            fs->files = (File *)realloc(fs->files, fs->file_count * sizeof(File));
             return;
         }
     }
 
-    printf("Error: Directory '%s' not found.\n", dirname);
+    printf("Error: Directory '%s' not found in current directory.\n", dirname);
 }
 
 

@@ -1,17 +1,22 @@
 #include "command.h"
 
 void ls(FileSystem *fs) {
-    printf("Files:\n");
+    printf("\033[1;34mDirectory\033[0m   \033[0;32mFile\033[0m\n");
     for (int i = 0; i < fs->file_count; i++) {
         // 只顯示當前目錄下的檔案和目錄
         if (fs->files[i].used_blocks > 0 && 
             strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
             if (fs->files[i].is_directory) {
-                printf("[DIR] %s\n", fs->files[i].name);
-            } else {
-                printf("%s (%d bytes)\n", fs->files[i].name, fs->files[i].size);
+                printf("\033[1;34m%s\033[0m\n", fs->files[i].name); // 藍色是目錄
             }
+            else if (fs->files[i].is_directory == 0)
+            {
+                printf("\033[0;32m%s (%d bytes)\033[0m\n", fs->files[i].name, fs->files[i].size);// 綠色是檔案
+            }
+
         }
+
+        
     }
 }
 
@@ -31,6 +36,10 @@ void mkdir(FileSystem *fs, const char *dirname) {
         return;
     }
 
+    // 獲取位置
+    int start_block = -1;
+    start_block = find_free_blocks(fs, 1);
+
     // 動態分配新的文件結構
     fs->files = (File *)realloc(fs->files, (fs->file_count + 1) * sizeof(File));
     if (fs->files == NULL) {
@@ -39,16 +48,23 @@ void mkdir(FileSystem *fs, const char *dirname) {
     }
 
     // 初始化新目錄
-    File *new_dir = &fs->files[fs->file_count];
+    File *new_dir = &fs->files[start_block];
     strncpy(new_dir->name, dirname, MAX_FILENAME);
     new_dir->size = 0;
+    new_dir->start_block = start_block;
     new_dir->used_blocks = 1; // 目錄至少佔用一個區塊
     new_dir->is_directory = 1; // 標記為目錄
     strncpy(new_dir->parent_name, fs->current_path, MAX_FILENAME); // 設定父目錄名稱
+
+    // 更新bitmask
+    fs->used_blocks_bitmask[start_block / 8] |= 1 << (start_block % 8);
+
+
     fs->file_count++;
     fs->free_blocks--;
 
     printf("Directory '%s' created.\n", dirname);
+    print_bitmask(fs);
 }
 
 void rmdir(FileSystem *fs, const char *dirname) {
@@ -80,6 +96,13 @@ void rmdir(FileSystem *fs, const char *dirname) {
             // 移除目錄
             fs->files[i].used_blocks = 0;
             fs->free_blocks++;
+
+            // 更新bitmask
+            fs->used_blocks_bitmask[fs->files[i].start_block / 8] &= ~(1 << (fs->files[i].start_block % 8));
+
+            // 移除File struct
+            memset(&fs->files[i], 0, sizeof(File));
+
             printf("Directory '%s' removed.\n", dirname);
             return;
         }
@@ -137,7 +160,7 @@ void put(FileSystem *fs, const char *filename) {
     }
 
     fseek(file, 0, SEEK_END);
-    int filesize = ftell(file);
+    int filesize = ftell(file); // ftell() 函數用來得到文件指標的當前位置
     fseek(file, 0, SEEK_SET);
 
     int required_blocks = (filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
@@ -154,11 +177,31 @@ void put(FileSystem *fs, const char *filename) {
         return;
     }
 
-    File *new_file = &fs->files[fs->file_count];
+    // 檢查bitmask以找到足夠的空間
+
+    int start_block = -1;
+    
+
+    //找到足夠塞得下file的連續空間
+
+
+    if (start_block == -1) {
+        printf("Error: Not enough contiguous space to store file '%s'.\n", filename);
+        fclose(file);
+        return;
+    }
+
+    // 更新bitmask
+
+
+
+    File *new_file = &fs->files[fs->file_count]; //有前面的檔案刪掉之後還是加在最後面的問題
     strncpy(new_file->name, filename, MAX_FILENAME);
     new_file->size = filesize;
     new_file->used_blocks = required_blocks;
     new_file->start_block = fs->storage_start_block + fs->file_count * BLOCK_SIZE;
+    new_file->is_directory = 0;
+    strcpy(new_file->parent_name, fs->current_path);
 
     fread(storage + new_file->start_block, filesize, 1, file);
     fs->free_blocks -= required_blocks;
@@ -204,13 +247,13 @@ void cat(FileSystem *fs, const char *filename) {
 
 void status(FileSystem *fs) {
     int used_inodes = 0, used_blocks = 0, file_blocks = 0;
-    // for (int i = 0; i < fs->file_count i++) {
-    //     if (fs->files[i].used_blocks > 0) {
-    //         used_inodes++;
-    //         used_blocks += fs->files[i].used_blocks;
-    //         file_blocks += (fs->files[i].size + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    //     }
-    // }
+     for (int i = 0; i < fs->file_count; i++) {
+         if (fs->files[i].used_blocks > 0) {
+             used_inodes++;
+             used_blocks += fs->files[i].used_blocks;
+             file_blocks += (fs->files[i].size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+         }
+     }
 
     printf("partition size: %d\n", fs->partition_size);
     //printf("total inodes: %d\n", );

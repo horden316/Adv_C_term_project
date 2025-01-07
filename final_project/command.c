@@ -247,7 +247,11 @@ void rm(FileSystem *fs, const char *filename) {
 void cat(FileSystem *fs, const char *filename) {
     for (int i = 0; i < fs->file_count; i++) {
         if (strcmp(fs->files[i].name, filename) == 0) {
-            printf("Contents of file '%s':\n%s\n", filename, storage + (i * BLOCK_SIZE));
+            printf("File '%s' content:\n", filename);
+            for (int j = 0; j < fs->files[i].size; j++) {
+                printf("%c", storage[i * BLOCK_SIZE + j]);
+            }
+            printf("\n");
             return;
         }
     }

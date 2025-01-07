@@ -162,6 +162,15 @@ void put(FileSystem *fs, const char *filename) {
     int filesize = ftell(file); // ftell() 函數用來得到文件指標的當前位置
     fseek(file, 0, SEEK_SET);
 
+    //處理同檔名問題
+    for (int i = 0; i < fs->file_count; i++) {
+        if (strcmp(fs->files[i].name, filename) == 0) {
+            printf("Error: File '%s' already exists.\n", filename);
+            fclose(file);
+            return;
+        }
+    }
+
     int required_blocks = (filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
     if (required_blocks > fs->free_blocks) {
         printf("Error: Not enough space to store file '%s'.\n", filename);

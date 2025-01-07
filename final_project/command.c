@@ -15,9 +15,8 @@ void ls(FileSystem *fs) {
             }
 
         }
-
-        
     }
+    print_bitmask(fs);
 }
 
 
@@ -64,7 +63,7 @@ void mkdir(FileSystem *fs, const char *dirname) {
     fs->free_blocks--;
 
     printf("Directory '%s' created.\n", dirname);
-    print_bitmask(fs);
+    //print_bitmask(fs);
 }
 
 void rmdir(FileSystem *fs, const char *dirname) {
@@ -177,12 +176,10 @@ void put(FileSystem *fs, const char *filename) {
         return;
     }
 
-    // 檢查bitmask以找到足夠的空間
+    // 檢查bitmask以找到足夠塞得下file的連續空間
 
     int start_block = -1;
-    
-
-    //找到足夠塞得下file的連續空間
+    start_block = find_free_blocks(fs, required_blocks);
 
 
     if (start_block == -1) {
@@ -192,6 +189,9 @@ void put(FileSystem *fs, const char *filename) {
     }
 
     // 更新bitmask
+    for (int i = 0; i < required_blocks; i++) {
+        fs->used_blocks_bitmask[(start_block + i) / 8] |= 1 << ((start_block + i) % 8);
+    }
 
 
 

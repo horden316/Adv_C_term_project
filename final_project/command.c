@@ -164,12 +164,14 @@ void put(FileSystem *fs, const char *filename) {
 
     //處理同檔名問題
     for (int i = 0; i < fs->file_count; i++) {
-        if (strcmp(fs->files[i].name, filename) == 0) {
-            printf("Error: File '%s' already exists.\n", filename);
+        if (strcmp(fs->files[i].name, filename) == 0 &&
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
+            printf("Error: File '%s' already exists in the current directory.\n", filename);
             fclose(file);
             return;
         }
     }
+
 
     int required_blocks = (filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
     if (required_blocks > fs->free_blocks) {
@@ -209,7 +211,7 @@ void put(FileSystem *fs, const char *filename) {
     new_file->is_directory = 0;
     strcpy(new_file->parent_name, fs->current_path);
 
-    fread(storage + new_file->start_block, filesize, 1, file);
+    fread(storage + start_block * BLOCK_SIZE, filesize, 1, file);
     fs->free_blocks -= required_blocks;
     fs->file_count++;
     fclose(file);
@@ -246,16 +248,18 @@ void rm(FileSystem *fs, const char *filename) {
 
 void cat(FileSystem *fs, const char *filename) {
     for (int i = 0; i < fs->file_count; i++) {
-        if (strcmp(fs->files[i].name, filename) == 0) {
+        if (strcmp(fs->files[i].name, filename) == 0 &&
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
             printf("File '%s' content:\n", filename);
             for (int j = 0; j < fs->files[i].size; j++) {
-                printf("%c", storage[i * BLOCK_SIZE + j]);
+                 printf("%c", storage[fs->files[i].start_block * BLOCK_SIZE + j]);
             }
+
             printf("\n");
             return;
         }
     }
-    printf("Error: File '%s' not found.\n", filename);
+
 }
 
 void status(FileSystem *fs) {

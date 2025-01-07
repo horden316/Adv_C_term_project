@@ -219,17 +219,41 @@ void put(FileSystem *fs, const char *filename) {
 }
 
 void get(FileSystem *fs, const char *filename) {
+    // 檢查 dump 資料夾是否存在，若不存在則建立
+    FILE *dir = fopen("dump", "r");
+    if (!dir) { // 如果無法開啟，假設資料夾不存在
+        system("mkdir dump"); // 使用系統指令建立資料夾
+    } else {
+        fclose(dir); // 如果能開啟，說明資料夾存在，關閉檔案
+    }
+
     for (int i = 0; i < fs->file_count; i++) {
-        if (strcmp(fs->files[i].name, filename) == 0) {
-            FILE *file = fopen(filename, "w");
-            fwrite(storage + (i * BLOCK_SIZE), fs->files[i].size, 1, file);
+        if (strcmp(fs->files[i].name, filename) == 0 &&
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0) { // 檢查檔案是否在當前目錄
+            // 構建完整的輸出路徑：dump/filename
+            char output_path[MAX_FILENAME + 5];
+            snprintf(output_path, sizeof(output_path), "dump/%s", filename);
+
+            // 打開 OS 檔案系統中的檔案進行寫入
+            FILE *file = fopen(output_path, "w");
+            if (!file) {
+                printf("Error: Could not create file '%s'.\n", output_path);
+                return;
+            }
+
+            // 從虛擬檔案系統讀取內容並寫入到檔案
+            fwrite(storage + (fs->files[i].start_block * BLOCK_SIZE), fs->files[i].size, 1, file);
+
             fclose(file);
-            printf("File '%s' retrieved from filesystem.\n", filename);
+            printf("File '%s' retrieved from filesystem to '%s'.\n", filename, output_path);
             return;
         }
     }
-    printf("Error: File '%s' not found.\n", filename);
+
+    printf("Error: File '%s' not found in the current directory.\n", filename);
 }
+
+
 
 void rm(FileSystem *fs, const char *filename) {
     for (int i = 0; i < fs->file_count; i++) {

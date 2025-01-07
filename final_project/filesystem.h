@@ -47,8 +47,14 @@ void save_filesystem(FileSystem *fs, const char *filename);
 //從storage_used_blocks裡找出連續可用的區塊
 int find_free_blocks(FileSystem *fs, int required_blocks);
 
+// 設定bitmask
+void set_bitmask(FileSystem *fs, int start_block, int required_blocks);
+
+// 清除bitmask
+void clear_bitmask(FileSystem *fs, int start_block, int required_blocks);
+
 // 印出bitmask
-int print_bitmask(FileSystem *fs);
+void print_bitmask(FileSystem *fs);
 
 // 儲存並退出檔案系統
 void exit_and_store(FileSystem *fs);

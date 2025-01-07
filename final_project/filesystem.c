@@ -85,8 +85,20 @@ int find_free_blocks(FileSystem *fs, int required_blocks) {
     return -1;
 }
 
+void set_bitmask(FileSystem *fs, int start_block, int required_blocks) {
+    for (int i = 0; i < required_blocks; i++) {
+        fs->used_blocks_bitmask[(start_block + i) / 8] |= 1 << ((start_block + i) % 8);
+    }
+}
+
+void clear_bitmask(FileSystem *fs, int start_block, int required_blocks) {
+    for (int i = 0; i < required_blocks; i++) {
+        fs->used_blocks_bitmask[(start_block + i) / 8] &= ~(1 << ((start_block + i) % 8));
+    }
+}
+
 // 印出bitmask
-int print_bitmask(FileSystem *fs) {
+void print_bitmask(FileSystem *fs) {
     for (int i = 0; i < fs->total_blocks; i++) {
         if (i % 8 == 0) {
             printf(" ");

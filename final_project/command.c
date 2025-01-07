@@ -56,7 +56,7 @@ void mkdir(FileSystem *fs, const char *dirname) {
     strncpy(new_dir->parent_name, fs->current_path, MAX_FILENAME); // 設定父目錄名稱
 
     // 更新bitmask
-    fs->used_blocks_bitmask[start_block / 8] |= 1 << (start_block % 8);
+    set_bitmask(fs, start_block, 1);
 
 
     fs->file_count++;
@@ -97,7 +97,7 @@ void rmdir(FileSystem *fs, const char *dirname) {
             fs->free_blocks++;
 
             // 更新bitmask
-            fs->used_blocks_bitmask[fs->files[i].start_block / 8] &= ~(1 << (fs->files[i].start_block % 8));
+            clear_bitmask(fs, fs->files[i].start_block, 1);
 
             // 移除File struct
             memset(&fs->files[i], 0, sizeof(File));
@@ -183,23 +183,20 @@ void put(FileSystem *fs, const char *filename) {
 
 
     if (start_block == -1) {
-        printf("Error: Not enough contiguous space to store file '%s'.\n", filename);
+        printf("Error: Not enough continuous space to store file '%s'.\n", filename);
         fclose(file);
         return;
     }
 
     // 更新bitmask
-    for (int i = 0; i < required_blocks; i++) {
-        fs->used_blocks_bitmask[(start_block + i) / 8] |= 1 << ((start_block + i) % 8);
-    }
-
+    set_bitmask(fs, start_block, required_blocks);
 
 
     File *new_file = &fs->files[fs->file_count]; //有前面的檔案刪掉之後還是加在最後面的問題
     strncpy(new_file->name, filename, MAX_FILENAME);
     new_file->size = filesize;
     new_file->used_blocks = required_blocks;
-    new_file->start_block = fs->storage_start_block + fs->file_count * BLOCK_SIZE;
+    new_file->start_block = start_block;
     new_file->is_directory = 0;
     strcpy(new_file->parent_name, fs->current_path);
 
@@ -225,13 +222,16 @@ void get(FileSystem *fs, const char *filename) {
 
 void rm(FileSystem *fs, const char *filename) {
     for (int i = 0; i < fs->file_count; i++) {
-        if (strcmp(fs->files[i].name, filename) == 0) {
+        if (strcmp(fs->files[i].name, filename) == 0 && strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
             fs->free_blocks += fs->files[i].used_blocks;
+            // 更新bitmask
+            clear_bitmask(fs, fs->files[i].start_block, fs->files[i].used_blocks);
             memset(&fs->files[i], 0, sizeof(File));
             printf("File '%s' removed from filesystem.\n", filename);
             return;
         }
     }
+
     printf("Error: File '%s' not found.\n", filename);
 }
 

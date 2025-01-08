@@ -29,6 +29,7 @@ typedef struct {
     int storage_start_block;         // 在共享存儲區域中的起始區塊（如果一個storage裡面有多個FileSystem的話啦）
     File *files;                     // 動態分配的檔案和目錄清單
     int file_count;                  // 檔案和目錄的數量
+    char *used_blocks_bitmask;       // 已使用空間的bitmask
 } FileSystem;
 
 // 共享儲存storage
@@ -42,6 +43,18 @@ void load_filesystem(FileSystem *fs, const char *filename);
 
 // 儲存檔案系統
 void save_filesystem(FileSystem *fs, const char *filename);
+
+//從storage_used_blocks裡找出連續可用的區塊
+int find_free_blocks(FileSystem *fs, int required_blocks);
+
+// 設定bitmask
+void set_bitmask(FileSystem *fs, int start_block, int required_blocks);
+
+// 清除bitmask
+void clear_bitmask(FileSystem *fs, int start_block, int required_blocks);
+
+// 印出bitmask
+void print_bitmask(FileSystem *fs);
 
 // 儲存並退出檔案系統
 void exit_and_store(FileSystem *fs);

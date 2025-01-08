@@ -2,3 +2,4 @@
 **/*.o
 *.img
 **/*.img
+.DS_Store

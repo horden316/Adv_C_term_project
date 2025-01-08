@@ -1,7 +1,7 @@
 #include "filesystem.h"
 
 // 共享存儲區域
-char storage[BLOCK_SIZE * 1000]; // 假設最大存儲區域大小
+char storage[1024000]; // 假設storage最大儲存空間大小為 1000KB
 
 void init_filesystem(FileSystem *fs, int size, int storage_start_block) {
     if (size > sizeof(storage) - storage_start_block * BLOCK_SIZE) {
@@ -15,6 +15,7 @@ void init_filesystem(FileSystem *fs, int size, int storage_start_block) {
     fs->storage_start_block = storage_start_block;
     fs->file_count = 0;
     fs->files = NULL;
+    fs->used_blocks_bitmask = malloc(fs->total_blocks / 8);
     memset(storage + storage_start_block * BLOCK_SIZE, 0, size); // 清空分區指定區域的記憶體初始化為零(記憶體起始位置, 初始化值, 初始化大小)
     strcpy(fs->current_path, "/"); // 設定根目錄
 }
@@ -63,6 +64,49 @@ void save_filesystem(FileSystem *fs, const char *filename) {
     }
 }
 
+//從storage_used_blocks裡找出連續可用的區塊
+int find_free_blocks(FileSystem *fs, int required_blocks) {
+    int start_block = -1;
+    int count = 0;
+    for (int i = 0; i < fs->total_blocks; i++) {
+        if (!(fs->used_blocks_bitmask[i / 8] & (1 << (i % 8)))) {
+            if (start_block == -1) {
+                start_block = i;
+            }
+            count++;
+            if (count == required_blocks) {
+                return start_block;
+            }
+        } else {
+            start_block = -1;
+            count = 0;
+        }
+    }
+    return -1;
+}
+
+void set_bitmask(FileSystem *fs, int start_block, int required_blocks) {
+    for (int i = 0; i < required_blocks; i++) {
+        fs->used_blocks_bitmask[(start_block + i) / 8] |= 1 << ((start_block + i) % 8);
+    }
+}
+
+void clear_bitmask(FileSystem *fs, int start_block, int required_blocks) {
+    for (int i = 0; i < required_blocks; i++) {
+        fs->used_blocks_bitmask[(start_block + i) / 8] &= ~(1 << ((start_block + i) % 8));
+    }
+}
+
+// 印出bitmask
+void print_bitmask(FileSystem *fs) {
+    for (int i = 0; i < fs->total_blocks; i++) {
+        if (i % 8 == 0) {
+            printf(" ");
+        }
+        printf("%d", (fs->used_blocks_bitmask[i / 8] & (1 << (i % 8))) ? 1 : 0);
+    }
+    printf("\n");
+}
 
 void exit_and_store(FileSystem *fs) {
     char filename[MAX_FILENAME];

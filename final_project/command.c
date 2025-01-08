@@ -284,6 +284,9 @@ void cat(FileSystem *fs, const char *filename) {
         }
     }
 
+    // 檔案不存在
+    printf("Error: File '%s' not found in the current directory.\n", filename);
+
 }
 
 void status(FileSystem *fs) {

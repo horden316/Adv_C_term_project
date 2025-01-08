@@ -20,28 +20,48 @@ void init_filesystem(FileSystem *fs, int size, int storage_start_block) {
     strcpy(fs->current_path, "/"); // 設定根目錄
 }
 
-void load_filesystem(FileSystem *fs, const char *filename) {
-    // 確保檔案名稱以 ".img" 結尾
-    if (!strstr(filename, ".img")) {
-        printf("Error: The file '%s' is not a valid .img dump file.\n", filename);
-        return;
-    }
+void load_filesystem(FileSystem *fs) {
+    char filename[MAX_FILENAME];
 
-    FILE *file = fopen(filename, "rb");
-    if (file) {
-        fread(fs, sizeof(FileSystem), 1, file);
-        fs->files = (File *)malloc(fs->file_count * sizeof(File));
-        fread(fs->files, sizeof(File), fs->file_count, file);
-        fread(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
-        fs->used_blocks_bitmask = malloc(fs->total_blocks / 8);
-        fread(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
-        fclose(file);
-        printf("Filesystem loaded from '%s'.\n", filename);
-    } else {
-        printf("Error: Could not load filesystem.\n");
-    }
+    while (1) { // 持續要求用戶輸入正確的檔案名稱
+        printf("Please input the filename of the filesystem image: ");
+        scanf("%s", filename);
 
+        // 確保檔案名稱以 ".img" 結尾
+        if (!strstr(filename, ".img")) {
+            printf("Error: The file '%s' is not a valid .img dump file.\n", filename);
+            continue; // 提示用戶重新輸入
+        }
+
+        FILE *file = fopen(filename, "rb");
+        if (file) {
+            fread(fs, sizeof(FileSystem), 1, file);
+            fs->files = (File *)malloc(fs->file_count * sizeof(File));
+            if (fs->files == NULL) {
+                printf("Error: Could not allocate memory for files.\n");
+                fclose(file);
+                exit(1);
+            }
+
+            fread(fs->files, sizeof(File), fs->file_count, file);
+            fread(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
+            fs->used_blocks_bitmask = malloc(fs->total_blocks / 8);
+            if (fs->used_blocks_bitmask == NULL) {
+                printf("Error: Could not allocate memory for bitmask.\n");
+                fclose(file);
+                exit(1);
+            }
+            fread(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
+            fclose(file);
+
+            printf("Filesystem loaded from '%s'.\n", filename);
+            return; // 成功載入，退出函數
+        } else {
+            printf("Error: Could not load filesystem. File '%s' does not exist or cannot be opened.\n", filename);
+        }
+    }
 }
+
 
 void save_filesystem(FileSystem *fs, const char *filename) {
     // 確保檔案名稱以 ".img" 結尾

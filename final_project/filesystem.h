@@ -38,7 +38,7 @@ extern char storage[];
 void init_filesystem(FileSystem *fs, int size, int start_block);
 
 // 載入檔案系統
-void load_filesystem(FileSystem *fs, const char *filename);
+void load_filesystem(FileSystem *fs);
 
 // 儲存檔案系統
 void save_filesystem(FileSystem *fs, const char *filename);

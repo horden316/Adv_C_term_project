@@ -299,18 +299,15 @@ void cat(FileSystem *fs, const char *filename) {
 }
 
 void status(FileSystem *fs) {
-    int used_inodes = 0, used_blocks = 0, file_blocks = 0;
+    int used_blocks = 0, file_blocks = 0;
      for (int i = 0; i < fs->file_count; i++) {
          if (fs->files[i].used_blocks > 0) {
-             used_inodes++;
              used_blocks += fs->files[i].used_blocks;
              file_blocks += (fs->files[i].size + BLOCK_SIZE - 1) / BLOCK_SIZE;
          }
      }
 
     printf("partition size: %d\n", fs->partition_size);
-    //printf("total inodes: %d\n", );
-    printf("used inodes: %d\n", used_inodes);
     printf("total blocks: %d\n", fs->total_blocks);
     printf("used blocks: %d\n", used_blocks);
     printf("files' blocks: %d\n", file_blocks);

@@ -1,7 +1,7 @@
 #include "command.h"
 
 void ls(FileSystem *fs) {
-    printf("\033[1;34mDirectory\033[0m   \033[0;32mFile\033[0m\n");
+    printf("\033[1;34mDirectory\033[0m   \033[0;32mFile\033[0m\n\n");
     for (int i = 0; i < fs->file_count; i++) {
         // 只顯示當前目錄下的檔案和目錄
         if (fs->files[i].used_blocks > 0 && 
@@ -47,7 +47,7 @@ void mkdir(FileSystem *fs, const char *dirname) {
     }
 
     // 初始化新目錄
-    File *new_dir = &fs->files[start_block];
+    File *new_dir = &fs->files[fs->file_count];
     strncpy(new_dir->name, dirname, MAX_FILENAME);
     new_dir->size = 0;
     new_dir->start_block = start_block;
@@ -99,8 +99,12 @@ void rmdir(FileSystem *fs, const char *dirname) {
             // 更新bitmask
             clear_bitmask(fs, fs->files[i].start_block, 1);
 
-            // 移除File struct
-            memset(&fs->files[i], 0, sizeof(File));
+            // 移除File struct並將後面的元素往前遞補
+            for (int j = i; j < fs->file_count - 1; j++) {
+                fs->files[j] = fs->files[j + 1];
+            }
+            fs->file_count--;
+            fs->files = (File *)realloc(fs->files, fs->file_count * sizeof(File));
 
             printf("Directory '%s' removed.\n", dirname);
             return;
@@ -188,7 +192,6 @@ void put(FileSystem *fs, const char *filename) {
     }
 
     // 檢查bitmask以找到足夠塞得下file的連續空間
-
     int start_block = -1;
     start_block = find_free_blocks(fs, required_blocks);
 
@@ -203,7 +206,7 @@ void put(FileSystem *fs, const char *filename) {
     set_bitmask(fs, start_block, required_blocks);
 
 
-    File *new_file = &fs->files[fs->file_count]; //有前面的檔案刪掉之後還是加在最後面的問題
+    File *new_file = &fs->files[fs->file_count];
     strncpy(new_file->name, filename, MAX_FILENAME);
     new_file->size = filesize;
     new_file->used_blocks = required_blocks;
@@ -261,7 +264,13 @@ void rm(FileSystem *fs, const char *filename) {
             fs->free_blocks += fs->files[i].used_blocks;
             // 更新bitmask
             clear_bitmask(fs, fs->files[i].start_block, fs->files[i].used_blocks);
-            memset(&fs->files[i], 0, sizeof(File));
+
+            // 移除File struct並將後面的元素往前遞補
+            for (int j = i; j < fs->file_count - 1; j++) {
+                fs->files[j] = fs->files[j + 1];
+            }
+            fs->file_count--;
+            fs->files = (File *)realloc(fs->files, fs->file_count * sizeof(File));
             printf("File '%s' removed from filesystem.\n", filename);
             return;
         }

@@ -1,5 +1,5 @@
 #include "filesystem.h"
-
+#define ENCRYPTION_KEY 0xAA // 加密使用的簡單密鑰
 // 共享存儲區域
 char storage[1024000]; // 假設storage最大儲存空間大小為 1000KB
 
@@ -20,51 +20,19 @@ void init_filesystem(FileSystem *fs, int size, int storage_start_block) {
     strcpy(fs->current_path, "/"); // 設定根目錄
 }
 
-void load_filesystem(FileSystem *fs) {
-    char filename[MAX_FILENAME];
 
-    while (1) { // 持續要求用戶輸入正確的檔案名稱
-        printf("Please input the filename of the filesystem image: ");
-        scanf("%s", filename);
 
-        // 確保檔案名稱以 ".img" 結尾
-        if (!strstr(filename, ".img")) {
-            printf("Error: The file '%s' is not a valid .img dump file.\n", filename);
-            continue; // 提示用戶重新輸入
-        }
-
-        FILE *file = fopen(filename, "rb");
-        if (file) {
-            fread(fs, sizeof(FileSystem), 1, file);
-            fs->files = (File *)malloc(fs->file_count * sizeof(File));
-            if (fs->files == NULL) {
-                printf("Error: Could not allocate memory for files.\n");
-                fclose(file);
-                exit(1);
-            }
-
-            fread(fs->files, sizeof(File), fs->file_count, file);
-            fread(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
-            fs->used_blocks_bitmask = malloc(fs->total_blocks / 8);
-            if (fs->used_blocks_bitmask == NULL) {
-                printf("Error: Could not allocate memory for bitmask.\n");
-                fclose(file);
-                exit(1);
-            }
-            fread(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
-            fclose(file);
-
-            printf("Filesystem loaded from '%s'.\n", filename);
-            return; // 成功載入，退出函數
-        } else {
-            printf("Error: Could not load filesystem. File '%s' does not exist or cannot be opened.\n", filename);
-        }
+void encrypt(char *data, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        data[i] ^= ENCRYPTION_KEY;
     }
 }
 
-
 void save_filesystem(FileSystem *fs, const char *filename) {
-    // 確保檔案名稱以 ".img" 結尾
+    char password[256];
+    printf("Enter password to protect this filesystem: ");
+    scanf("%s", password);
+
     if (!strstr(filename, ".img")) {
         printf("Error: The file '%s' is not a valid .img dump file.\n", filename);
         return;
@@ -72,16 +40,74 @@ void save_filesystem(FileSystem *fs, const char *filename) {
 
     FILE *file = fopen(filename, "wb");
     if (file) {
+        // 加密文件系統元數據
+        encrypt((char *)fs, sizeof(FileSystem));
         fwrite(fs, sizeof(FileSystem), 1, file);
+        encrypt((char *)fs, sizeof(FileSystem)); // 寫完後解密回原狀
+
+        // 加密文件數據
+        encrypt((char *)fs->files, fs->file_count * sizeof(File));
         fwrite(fs->files, sizeof(File), fs->file_count, file);
+        encrypt((char *)fs->files, fs->file_count * sizeof(File));
+
+        // 加密存儲區域
+        encrypt(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size);
         fwrite(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
+        encrypt(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size);
+
+        // 加密位元遮罩
+        encrypt((char *)fs->used_blocks_bitmask, fs->total_blocks / 8);
         fwrite(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
+        encrypt((char *)fs->used_blocks_bitmask, fs->total_blocks / 8);
+
         fclose(file);
-        printf("Filesystem saved to '%s'.\n", filename);
+        printf("Filesystem saved to '%s' with encryption.\n", filename);
     } else {
         printf("Error: Could not save filesystem.\n");
     }
 }
+
+void load_filesystem(FileSystem *fs) {
+    char filename[MAX_FILENAME];
+    char password[256];
+
+    while (1) {
+        printf("Please input the filename of the filesystem image: ");
+        scanf("%s", filename);
+
+        printf("Enter password to decrypt this filesystem: ");
+        scanf("%s", password);
+
+        if (!strstr(filename, ".img")) {
+            printf("Error: The file '%s' is not a valid .img dump file.\n", filename);
+            continue;
+        }
+
+        FILE *file = fopen(filename, "rb");
+        if (file) {
+            fread(fs, sizeof(FileSystem), 1, file);
+            encrypt((char *)fs, sizeof(FileSystem)); // 解密
+
+            fs->files = (File *)malloc(fs->file_count * sizeof(File));
+            fread(fs->files, sizeof(File), fs->file_count, file);
+            encrypt((char *)fs->files, fs->file_count * sizeof(File)); // 解密
+
+            fread(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
+            encrypt(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size); // 解密
+
+            fs->used_blocks_bitmask = malloc(fs->total_blocks / 8);
+            fread(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
+            encrypt((char *)fs->used_blocks_bitmask, fs->total_blocks / 8); // 解密
+
+            fclose(file);
+            printf("Filesystem loaded from '%s'.\n", filename);
+            return;
+        } else {
+            printf("Error: Could not load filesystem. File '%s' does not exist or cannot be opened.\n", filename);
+        }
+    }
+}
+
 
 //從storage_used_blocks裡找出連續可用的區塊
 int find_free_blocks(FileSystem *fs, int required_blocks) {

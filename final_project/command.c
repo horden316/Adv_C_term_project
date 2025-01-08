@@ -318,17 +318,163 @@ void status(FileSystem *fs) {
 
 void help() {
     printf("List of commands:\n");
-    printf("'ls'    list directory\n");
-    printf("'cd'    change directory\n");
-    printf("'rm'    remove\n");
-    printf("'mkdir' make directory\n");
-    printf("'rmdir' remove directory\n");
-    printf("'put'   put file into the space\n");
-    printf("'get'   get file from the space\n");
-    printf("'cat'   show content\n");
-    printf("'status' show status of the space\n");
-    printf("'help'  list commands\n");
-    printf("'exit and store img' exit and save filesystem\n");
-
-
+    printf("'ls'      list directory\n");
+    printf("'cd'      change directory\n");
+    printf("'rm'      remove file\n");
+    printf("'mkdir'   make directory\n");
+    printf("'rmdir'   remove directory\n");
+    printf("'put'     put file into the space\n");
+    printf("'get'     get file from the space\n");
+    printf("'cat'     show content of a file\n");
+    printf("'status'  show status of the space\n");
+    printf("'create'  create a new text file\n");
+    printf("'edit'    edit an existing text file\n");
+    printf("'help'    list commands\n");
+    printf("'exit'    exit and save filesystem\n");
 }
+void create(FileSystem *fs, const char *filename) {
+    // 檢查是否已存在同名文件
+    for (int i = 0; i < fs->file_count; i++) {
+        if (strcmp(fs->files[i].name, filename) == 0 &&
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
+            printf("Error: File '%s' already exists in the current directory.\n", filename);
+            return;
+        }
+    }
+
+    printf("Enter text content for the file '%s' (end with an empty line):\n", filename);
+    char content[1024];
+    char line[256];
+    content[0] = '\0';
+
+    // 清除輸入緩衝區，避免殘留字符影響輸入
+    while (getchar() != '\n'); 
+
+    while (fgets(line, sizeof(line), stdin)) {
+        // 檢查是否為空行來結束輸入
+        if (strcmp(line, "\n") == 0) break;
+        strcat(content, line);
+    }
+
+    int filesize = strlen(content);
+    if (filesize == 0) {
+        printf("Error: File '%s' is empty. Please provide content.\n", filename);
+        return;
+    }
+
+    int required_blocks = (filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
+
+    // 檢查是否有足夠的空間來存儲文件
+    if (required_blocks > fs->free_blocks) {
+        printf("Error: Not enough space to store file '%s'.\n", filename);
+        return;
+    }
+
+    // 尋找空閒的區塊來存儲文件
+    int start_block = find_free_blocks(fs, required_blocks);
+    if (start_block == -1) {
+        printf("Error: Not enough continuous space to store file '%s'.\n", filename);
+        return;
+    }
+
+    // 動態分配新的文件結構
+    fs->files = (File *)realloc(fs->files, (fs->file_count + 1) * sizeof(File));
+    if (fs->files == NULL) {
+        printf("Error: Could not allocate memory for new file.\n");
+        return;
+    }
+
+    // 初始化新文件
+    File *new_file = &fs->files[fs->file_count];
+    strncpy(new_file->name, filename, MAX_FILENAME);
+    new_file->size = filesize;
+    new_file->start_block = start_block;
+    new_file->used_blocks = required_blocks;
+    new_file->is_directory = 0;
+    strncpy(new_file->parent_name, fs->current_path, MAX_FILENAME);
+
+    // 更新位元遮罩並寫入文件內容到存儲空間
+    set_bitmask(fs, start_block, required_blocks);
+    memcpy(storage + start_block * BLOCK_SIZE, content, filesize);
+
+    fs->free_blocks -= required_blocks;
+    fs->file_count++;
+
+    printf("Text file '%s' created successfully.\n", filename);
+}
+
+
+
+void edit(FileSystem *fs, const char *filename) {
+    // 找到文件在文件系統中的位置
+    int file_index = -1;
+    for (int i = 0; i < fs->file_count; i++) {
+        if (strcmp(fs->files[i].name, filename) == 0 &&
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
+            file_index = i;
+            break;
+        }
+    }
+    if (file_index == -1) {
+        printf("Error: File '%s' not found in the current directory.\n", filename);
+        return;
+    }
+
+    printf("Enter new content for the file '%s' (end with an empty line):\n", filename);
+    char content[1024];
+    char line[256];
+    content[0] = '\0';
+
+    // 清空輸入緩衝區
+    while (getchar() != '\n');
+
+    while (fgets(line, sizeof(line), stdin)) {
+        if (strcmp(line, "\n") == 0) break; // 空行結束
+        strcat(content, line);
+    }
+
+    int new_filesize = strlen(content);
+    if (new_filesize == 0) {
+        printf("Error: New content for file '%s' is empty. File content remains unchanged.\n", filename);
+        return;
+    }
+
+    int new_required_blocks = (new_filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    File *file = &fs->files[file_index];
+
+    // 檢查是否需要更多空間
+    if (new_required_blocks > file->used_blocks) {
+        int additional_blocks = new_required_blocks - file->used_blocks;
+
+        // 檢查是否有足夠的空間
+        if (additional_blocks > fs->free_blocks) {
+            printf("Error: Not enough space to update file '%s'.\n", filename);
+            return;
+        }
+
+        // 嘗試找到額外的連續區塊
+        int start_block = find_free_blocks(fs, additional_blocks);
+        if (start_block == -1) {
+            printf("Error: Not enough continuous space to update file '%s'.\n", filename);
+            return;
+        }
+
+        // 更新位元遮罩
+        set_bitmask(fs, start_block, additional_blocks);
+
+        // 將額外區塊追加到現有區塊後面
+        memcpy(storage + (start_block * BLOCK_SIZE),
+               content + (file->used_blocks * BLOCK_SIZE),
+               additional_blocks * BLOCK_SIZE);
+
+        fs->free_blocks -= additional_blocks;
+        file->used_blocks = new_required_blocks;
+    }
+
+    // 更新文件內容
+    memcpy(storage + (file->start_block * BLOCK_SIZE), content, new_filesize);
+    file->size = new_filesize;
+
+    printf("Text file '%s' edited successfully.\n", filename);
+}
+

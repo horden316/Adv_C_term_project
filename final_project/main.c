@@ -50,7 +50,15 @@ int main() {
             rm(&fs, arg1);
         } else if (strcmp(command, "status") == 0) {
             status(&fs);
-        } else if (strcmp(command, "help") == 0) {
+        } 
+        else if (strcmp(command, "create") == 0) {
+            scanf("%s", arg1);
+            create(&fs, arg1);
+        } else if (strcmp(command, "edit") == 0) {
+            scanf("%s", arg1);
+            edit(&fs, arg1);
+        }
+        else if (strcmp(command, "help") == 0) {
             help();
         } else if (strcmp(command, "cd") == 0) {
             scanf("%s", arg1);

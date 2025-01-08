@@ -420,27 +420,39 @@ void edit(FileSystem *fs, const char *filename) {
         return;
     }
 
-    printf("Enter new content for the file '%s' (end with an empty line):\n", filename);
-    char content[1024];
-    char line[256];
-    content[0] = '\0';
+    File *file = &fs->files[file_index];
 
-    // 清空輸入緩衝區
+    // 清空緩衝區避免干擾
     while (getchar() != '\n');
 
+    // 編輯文件內容
+    printf("Enter new content for the file '%s' (end with an empty line):\n", filename);
+    char content[1024] = {0};
+    char line[256];
+    int new_filesize = 0;
+
+    // 開始讀取用戶輸入
     while (fgets(line, sizeof(line), stdin)) {
-        if (strcmp(line, "\n") == 0) break; // 空行結束
+        // 空行結束輸入
+        if (strcmp(line, "\n") == 0) break;
+
+        // 檢查內容大小是否超出限制
+        if (new_filesize + strlen(line) >= sizeof(content)) {
+            printf("Error: Content exceeds maximum allowed size.\n");
+            return;
+        }
+
         strcat(content, line);
+        new_filesize += strlen(line);
     }
 
-    int new_filesize = strlen(content);
+    // 檢查是否輸入了內容
     if (new_filesize == 0) {
         printf("Error: New content for file '%s' is empty. File content remains unchanged.\n", filename);
         return;
     }
 
     int new_required_blocks = (new_filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
-    File *file = &fs->files[file_index];
 
     // 檢查是否需要更多空間
     if (new_required_blocks > file->used_blocks) {
@@ -475,6 +487,44 @@ void edit(FileSystem *fs, const char *filename) {
     memcpy(storage + (file->start_block * BLOCK_SIZE), content, new_filesize);
     file->size = new_filesize;
 
-    printf("Text file '%s' edited successfully.\n", filename);
+    printf("Content of file '%s' updated successfully.\n", filename);
+
+    // 提示是否更改文件名
+    printf("Do you want to rename the file?\n");
+    printf("1. Keep the current name: '%s'\n", filename);
+    printf("2. Rename the file\n");
+    printf("Enter your choice (1 or 2): ");
+
+    int choice;
+    scanf("%d", &choice);
+    getchar(); // 清除緩衝區中的換行符
+
+    if (choice == 2) {
+        printf("Enter a new filename (with .txt extension): ");
+        char new_filename[MAX_FILENAME];
+        fgets(new_filename, sizeof(new_filename), stdin);
+
+        // 去掉輸入中的換行符
+        new_filename[strcspn(new_filename, "\n")] = '\0';
+
+        // 檢查新名稱是否與其他文件衝突
+        for (int i = 0; i < fs->file_count; i++) {
+            if (strcmp(fs->files[i].name, new_filename) == 0 &&
+                strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
+                printf("Error: File '%s' already exists in the current directory.\n", new_filename);
+                return;
+            }
+        }
+
+        // 更新文件名
+        strncpy(file->name, new_filename, MAX_FILENAME);
+        printf("File renamed to '%s'.\n", new_filename);
+    } else {
+        printf("Filename remains unchanged: '%s'.\n", filename);
+    }
+
+    printf("Text file '%s' edited successfully.\n", file->name);
 }
+
+
 

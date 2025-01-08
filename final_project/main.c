@@ -11,7 +11,11 @@ int main() {
     getchar();
 
     if (option == 1) {
-        load_filesystem(&fs, FS_IMG);
+        printf("Please input the filename of the filesystem image: ");
+        char filename[256];
+        scanf("%s", filename);
+        getchar();
+        load_filesystem(&fs, filename);
     } else if (option == 2) {
         printf("Input size of a new partition (example 102400): ");
         int size;

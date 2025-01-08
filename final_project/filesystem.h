@@ -8,7 +8,6 @@
 #define MAX_FILENAME 255
 #define MAX_PATH 1023
 #define BLOCK_SIZE 1024
-#define FS_IMG "filesystem.img"
 
 // 定義 File 結構
 typedef struct File {

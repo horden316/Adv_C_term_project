@@ -31,18 +31,16 @@ void load_filesystem(FileSystem *fs, const char *filename) {
     if (file) {
         fread(fs, sizeof(FileSystem), 1, file);
         fs->files = (File *)malloc(fs->file_count * sizeof(File));
-        if (fs->files == NULL) {
-            printf("Error: Could not allocate memory for files.\n");
-            exit(1);
-        }
         fread(fs->files, sizeof(File), fs->file_count, file);
         fread(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
+        fs->used_blocks_bitmask = malloc(fs->total_blocks / 8);
+        fread(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
         fclose(file);
         printf("Filesystem loaded from '%s'.\n", filename);
     } else {
-        printf("Error: Could not load filesystem. Creating new filesystem.\n");
-        init_filesystem(fs, BLOCK_SIZE * 100, 0);
+        printf("Error: Could not load filesystem.\n");
     }
+
 }
 
 void save_filesystem(FileSystem *fs, const char *filename) {
@@ -57,6 +55,7 @@ void save_filesystem(FileSystem *fs, const char *filename) {
         fwrite(fs, sizeof(FileSystem), 1, file);
         fwrite(fs->files, sizeof(File), fs->file_count, file);
         fwrite(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
+        fwrite(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
         fclose(file);
         printf("Filesystem saved to '%s'.\n", filename);
     } else {

@@ -1,7 +1,7 @@
 #include "command.h"
 
 void ls(FileSystem *fs) {
-    printf("\033[1;34mDirectory\033[0m   \033[0;32mFile\033[0m\n\n");
+    printf("\033[1;34m[Directory]\033[0m   \033[0;32m[File]\033[0m\n");
     for (int i = 0; i < fs->file_count; i++) {
         // 只顯示當前目錄下的檔案和目錄
         if (fs->files[i].used_blocks > 0 && 

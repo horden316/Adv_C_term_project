@@ -406,125 +406,182 @@ void create(FileSystem *fs, const char *filename) {
 
 
 void edit(FileSystem *fs, const char *filename) {
-    // 找到文件在文件系統中的位置
-    int file_index = -1;
+    // Check if the file exists and is not a directory
     for (int i = 0; i < fs->file_count; i++) {
         if (strcmp(fs->files[i].name, filename) == 0 &&
-            strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
-            file_index = i;
-            break;
-        }
-    }
-    if (file_index == -1) {
-        printf("Error: File '%s' not found in the current directory.\n", filename);
-        return;
-    }
+            strcmp(fs->files[i].parent_name, fs->current_path) == 0 &&
+            !fs->files[i].is_directory) {
 
-    File *file = &fs->files[file_index];
+            // Load existing content into editable_content
+            char editable_content[1024];
+            memset(editable_content, 0, sizeof(editable_content));
+            memcpy(editable_content, storage + fs->files[i].start_block * BLOCK_SIZE, fs->files[i].size);
+            editable_content[fs->files[i].size] = '\0'; // Null-terminate for safety
 
-    // 清空緩衝區避免干擾
-    while (getchar() != '\n');
+            printf("Editing '%s'.\n", filename);
+            printf("--- Current Content Below ---\n");
+            printf("%s\n", editable_content); // Display the existing content
 
-    // 編輯文件內容
-    printf("Enter new content for the file '%s' (end with an empty line):\n", filename);
-    char content[1024] = {0};
-    char line[256];
-    int new_filesize = 0;
+            char new_content[1024];
+            memset(new_content, 0, sizeof(new_content)); // Initialize new content buffer
 
-    // 開始讀取用戶輸入
-    while (fgets(line, sizeof(line), stdin)) {
-        // 空行結束輸入
-        if (strcmp(line, "\n") == 0) break;
+            printf("\n--- Modify the content below. Enter the updated content line by line ---\n");
+            printf("--- Current content is preloaded. Leave blank to keep, type '-d' to delete. ---\n");
 
-        // 檢查內容大小是否超出限制
-        if (new_filesize + strlen(line) >= sizeof(content)) {
-            printf("Error: Content exceeds maximum allowed size.\n");
-            return;
-        }
+            char line[256]; // Buffer for user input
+            char *line_ptr = strtok(editable_content, "\n"); // Tokenize original content by lines
+            while (getchar() != '\n'); 
+            // Loop through each line of the original content
+            while (line_ptr) {
+                printf("Original: %s\nEdit (leave blank to keep, type '-d' to delete): ", line_ptr);
+                fgets(line, sizeof(line), stdin);
 
-        strcat(content, line);
-        new_filesize += strlen(line);
-    }
+                // Remove trailing newline from input
+                line[strcspn(line, "\n")] = '\0';
 
-    // 檢查是否輸入了內容
-    if (new_filesize == 0) {
-        printf("Error: New content for file '%s' is empty. File content remains unchanged.\n", filename);
-        return;
-    }
+                if (strcmp(line, "-d") == 0) {
+                    // If user types "-d", skip this line (delete it)
+                    printf("Line deleted.\n");
+                } else if (strcmp(line, "") == 0) {
+                    // If user leaves input blank, keep the original line
+                    strcat(new_content, line_ptr);
+                    strcat(new_content, "\n");
+                } else {
+                    // Replace with new content
+                    strcat(new_content, line);
+                    strcat(new_content, "\n");
+                }
 
-    int new_required_blocks = (new_filesize + BLOCK_SIZE - 1) / BLOCK_SIZE;
+                line_ptr = strtok(NULL, "\n"); // Move to the next line
+            }
 
-    // 檢查是否需要更多空間
-    if (new_required_blocks > file->used_blocks) {
-        int additional_blocks = new_required_blocks - file->used_blocks;
+            // Allow user to add additional lines
+            printf("Add additional lines (end with an empty line):\n");
+            while (fgets(line, sizeof(line), stdin)) {
+                if (strcmp(line, "\n") == 0) break; // Stop on empty line
+                strcat(new_content, line); // Append additional content
+            }
 
-        // 檢查是否有足夠的空間
-        if (additional_blocks > fs->free_blocks) {
-            printf("Error: Not enough space to update file '%s'.\n", filename);
-            return;
-        }
-
-        // 嘗試找到額外的連續區塊
-        int start_block = find_free_blocks(fs, additional_blocks);
-        if (start_block == -1) {
-            printf("Error: Not enough continuous space to update file '%s'.\n", filename);
-            return;
-        }
-
-        // 更新位元遮罩
-        set_bitmask(fs, start_block, additional_blocks);
-
-        // 將額外區塊追加到現有區塊後面
-        memcpy(storage + (start_block * BLOCK_SIZE),
-               content + (file->used_blocks * BLOCK_SIZE),
-               additional_blocks * BLOCK_SIZE);
-
-        fs->free_blocks -= additional_blocks;
-        file->used_blocks = new_required_blocks;
-    }
-
-    // 更新文件內容
-    memcpy(storage + (file->start_block * BLOCK_SIZE), content, new_filesize);
-    file->size = new_filesize;
-
-    printf("Content of file '%s' updated successfully.\n", filename);
-
-    // 提示是否更改文件名
-    printf("Do you want to rename the file?\n");
-    printf("1. Keep the current name: '%s'\n", filename);
-    printf("2. Rename the file\n");
-    printf("Enter your choice (1 or 2): ");
-
-    int choice;
-    scanf("%d", &choice);
-    getchar(); // 清除緩衝區中的換行符
-
-    if (choice == 2) {
-        printf("Enter a new filename (with .txt extension): ");
-        char new_filename[MAX_FILENAME];
-        fgets(new_filename, sizeof(new_filename), stdin);
-
-        // 去掉輸入中的換行符
-        new_filename[strcspn(new_filename, "\n")] = '\0';
-
-        // 檢查新名稱是否與其他文件衝突
-        for (int i = 0; i < fs->file_count; i++) {
-            if (strcmp(fs->files[i].name, new_filename) == 0 &&
-                strcmp(fs->files[i].parent_name, fs->current_path) == 0) {
-                printf("Error: File '%s' already exists in the current directory.\n", new_filename);
+            int new_size = strlen(new_content);
+            if (new_size == 0) {
+                printf("Error: New content is empty. Editing aborted.\n");
                 return;
             }
-        }
 
-        // 更新文件名
-        strncpy(file->name, new_filename, MAX_FILENAME);
-        printf("File renamed to '%s'.\n", new_filename);
-    } else {
-        printf("Filename remains unchanged: '%s'.\n", filename);
+            // Ask the user whether to save as original or new file
+            char save_choice[10];
+            printf("Do you want to save changes as the original file '%s'? (yes/no): ", filename);
+            fgets(save_choice, sizeof(save_choice), stdin);
+            save_choice[strcspn(save_choice, "\n")] = '\0'; // Remove newline
+
+            if (strcmp(save_choice, "no") == 0) {
+                // Ask for a new filename
+                char new_filename[MAX_FILENAME];
+                printf("Enter new filename: ");
+                fgets(new_filename, sizeof(new_filename), stdin);
+                new_filename[strcspn(new_filename, "\n")] = '\0'; // Remove newline
+
+                // Check if the new filename already exists in the current directory
+                for (int j = 0; j < fs->file_count; j++) {
+                    if (strcmp(fs->files[j].name, new_filename) == 0 &&
+                        strcmp(fs->files[j].parent_name, fs->current_path) == 0) {
+                        printf("Error: File '%s' already exists in the current directory.\n", new_filename);
+                        return;
+                    }
+                }
+
+                // Create a new file with the new content
+                int required_blocks = (new_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+                if (required_blocks > fs->free_blocks) {
+                    printf("Error: Not enough space to create new file '%s'.\n", new_filename);
+                    return;
+                }
+
+                int start_block = find_free_blocks(fs, required_blocks);
+                if (start_block == -1) {
+                    printf("Error: Not enough continuous space to create new file '%s'.\n", new_filename);
+                    return;
+                }
+
+                fs->files = (File *)realloc(fs->files, (fs->file_count + 1) * sizeof(File));
+                if (!fs->files) {
+                    printf("Error: Memory allocation failed.\n");
+                    return;
+                }
+
+                File *new_file = &fs->files[fs->file_count];
+                strncpy(new_file->name, new_filename, MAX_FILENAME);
+                new_file->size = new_size;
+                new_file->start_block = start_block;
+                new_file->used_blocks = required_blocks;
+                new_file->is_directory = 0;
+                strncpy(new_file->parent_name, fs->current_path, MAX_FILENAME);
+
+                set_bitmask(fs, start_block, required_blocks);
+                memcpy(storage + start_block * BLOCK_SIZE, new_content, new_size);
+
+                fs->free_blocks -= required_blocks;
+                fs->file_count++;
+
+                printf("File '%s' created successfully.\n", new_filename);
+                return;
+            }
+
+            // Overwrite the original file
+            int required_blocks = (new_size + BLOCK_SIZE - 1) / BLOCK_SIZE;
+            if (required_blocks > fs->files[i].used_blocks) {
+                // Check if there is enough free space
+                if (required_blocks - fs->files[i].used_blocks > fs->free_blocks) {
+                    printf("Error: Not enough space to update file '%s'.\n", filename);
+                    return;
+                }
+
+                // Find new continuous space for the file
+                int start_block = find_free_blocks(fs, required_blocks);
+                if (start_block == -1) {
+                    printf("Error: Not enough continuous space to update file '%s'.\n", filename);
+                    return;
+                }
+
+                // Free the old space and update bitmask
+                clear_bitmask(fs, fs->files[i].start_block, fs->files[i].used_blocks);
+                fs->free_blocks += fs->files[i].used_blocks;
+
+                // Allocate new space
+                set_bitmask(fs, start_block, required_blocks);
+                fs->files[i].start_block = start_block;
+                fs->files[i].used_blocks = required_blocks;
+                fs->free_blocks -= required_blocks;
+            }
+
+            // Write the new content back to the original file
+            memcpy(storage + fs->files[i].start_block * BLOCK_SIZE, new_content, new_size);
+            fs->files[i].size = new_size;
+
+            printf("File '%s' updated successfully.\n", filename);
+            return;
+        }
     }
 
-    printf("Text file '%s' edited successfully.\n", file->name);
+    printf("Error: File '%s' not found in the current directory.\n", filename);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -33,29 +33,26 @@ void save_filesystem(FileSystem *fs, const char *filename) {
     printf("Enter password to protect this filesystem: ");
     scanf("%s", password);
 
-    if (!strstr(filename, ".img")) {
-        printf("Error: The file '%s' is not a valid .img dump file.\n", filename);
-        return;
-    }
+    strncpy(fs->password, password, sizeof(fs->password)); // Store password in the filesystem structure
 
     FILE *file = fopen(filename, "wb");
     if (file) {
-        // 加密文件系統元數據
+        // Encrypt filesystem metadata, including the password
         encrypt((char *)fs, sizeof(FileSystem));
         fwrite(fs, sizeof(FileSystem), 1, file);
-        encrypt((char *)fs, sizeof(FileSystem)); // 寫完後解密回原狀
+        encrypt((char *)fs, sizeof(FileSystem)); // Restore after saving
 
-        // 加密文件數據
+        // Encrypt file metadata
         encrypt((char *)fs->files, fs->file_count * sizeof(File));
         fwrite(fs->files, sizeof(File), fs->file_count, file);
         encrypt((char *)fs->files, fs->file_count * sizeof(File));
 
-        // 加密存儲區域
+        // Encrypt storage
         encrypt(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size);
         fwrite(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
         encrypt(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size);
 
-        // 加密位元遮罩
+        // Encrypt bitmask
         encrypt((char *)fs->used_blocks_bitmask, fs->total_blocks / 8);
         fwrite(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
         encrypt((char *)fs->used_blocks_bitmask, fs->total_blocks / 8);
@@ -67,46 +64,57 @@ void save_filesystem(FileSystem *fs, const char *filename) {
     }
 }
 
+
 void load_filesystem(FileSystem *fs) {
     char filename[MAX_FILENAME];
     char password[256];
+    int attempt = 0;
 
-    while (1) {
-        printf("Please input the filename of the filesystem image: ");
-        scanf("%s", filename);
+    printf("Enter the filename of the filesystem image: ");
+    scanf("%s", filename);
 
-        printf("Enter password to decrypt this filesystem: ");
+    FILE *file = fopen(filename, "rb");
+    if (!file) {
+        printf("Error: The file '%s' does not exist or cannot be opened.\n", filename);
+        return;
+    }
+
+    fread(fs, sizeof(FileSystem), 1, file);
+    encrypt((char *)fs, sizeof(FileSystem)); // Decrypt metadata, including password
+
+    printf("Enter password to decrypt this filesystem (3 attempts max):\n");
+    while (attempt < 3) {
         scanf("%s", password);
-
-        if (!strstr(filename, ".img")) {
-            printf("Error: The file '%s' is not a valid .img dump file.\n", filename);
-            continue;
-        }
-
-        FILE *file = fopen(filename, "rb");
-        if (file) {
-            fread(fs, sizeof(FileSystem), 1, file);
-            encrypt((char *)fs, sizeof(FileSystem)); // 解密
-
+        if (strcmp(password, fs->password) == 0) { // Compare entered password with stored password
+            // Load file metadata
             fs->files = (File *)malloc(fs->file_count * sizeof(File));
             fread(fs->files, sizeof(File), fs->file_count, file);
-            encrypt((char *)fs->files, fs->file_count * sizeof(File)); // 解密
+            encrypt((char *)fs->files, fs->file_count * sizeof(File)); // Decrypt
 
+            // Load storage
             fread(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size, 1, file);
-            encrypt(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size); // 解密
+            encrypt(storage + fs->storage_start_block * BLOCK_SIZE, fs->partition_size); // Decrypt
 
+            // Load bitmask
             fs->used_blocks_bitmask = malloc(fs->total_blocks / 8);
             fread(fs->used_blocks_bitmask, fs->total_blocks / 8, 1, file);
-            encrypt((char *)fs->used_blocks_bitmask, fs->total_blocks / 8); // 解密
+            encrypt((char *)fs->used_blocks_bitmask, fs->total_blocks / 8); // Decrypt
 
             fclose(file);
-            printf("Filesystem loaded from '%s'.\n", filename);
+            printf("Filesystem loaded successfully from '%s'.\n", filename);
             return;
         } else {
-            printf("Error: Could not load filesystem. File '%s' does not exist or cannot be opened.\n", filename);
+            attempt++;
+            printf("Incorrect password. Attempts left: %d\n", 3 - attempt);
         }
     }
+
+    printf("Error: Password attempts exceeded. Exiting.\n");
+    fclose(file);
+    exit(EXIT_FAILURE);
 }
+
+
 
 
 //從storage_used_blocks裡找出連續可用的區塊

@@ -29,6 +29,8 @@ void cat(FileSystem *fs, const char *filename);
 // 顯示檔案系統狀態
 void status(FileSystem *fs);
 
+void create(FileSystem *fs, const char *filename) ;
+void edit(FileSystem *fs, const char *filename) ;
 // 列出可用指令
 void help();
 

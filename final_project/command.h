@@ -32,4 +32,10 @@ void status(FileSystem *fs);
 // 列出可用指令
 void help();
 
+// 建立新檔案
+void create(FileSystem *fs, const char *filename);
+
+// 編輯檔案
+void edit(FileSystem *fs, const char *filename);
+
 #endif

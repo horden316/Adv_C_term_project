@@ -1,6 +1,6 @@
 #include "filesystem.h"
 #define ENCRYPTION_KEY 0xAA // 加密使用的簡單密鑰
-// 共享存儲區域
+
 char storage[1024000]; // 假設storage最大儲存空間大小為 1000KB
 
 void init_filesystem(FileSystem *fs, int size, int storage_start_block) {
